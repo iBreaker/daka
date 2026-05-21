@@ -17,10 +17,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statsWindowController: StatsWindowController?
     private var isShowingClockInReminder = false
     private var nextClockInReminderAt: Date?
+    private let chinaCalendar = ChinaWorkdayCalendar()
+    private var holidayYears: [Int: ChinaHolidayYear] = [:]
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
         setupStore()
+        setupChinaCalendar()
         setupStatusItem()
         setupNotifications()
         evaluateAndRender()
@@ -107,6 +110,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             } else {
                 currentRecord = recorder.update(record: currentRecord, matched: true, at: now)
                 persistCurrentRecord()
+                showWeeklyWarningIfNeeded(at: now)
             }
         }
 
@@ -334,5 +338,124 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         currentRecord = recorder.update(record: currentRecord, matched: true, at: date)
         nextClockInReminderAt = nil
         persistCurrentRecord()
+        showWeeklyWarningIfNeeded(at: date)
     }
+
+    private func setupChinaCalendar() {
+        let years = requiredChinaCalendarYears(around: Date())
+        holidayYears = chinaCalendar.loadCachedYears(years)
+        chinaCalendar.refreshYears(years) { [weak self] refreshed in
+            DispatchQueue.main.async {
+                self?.holidayYears.merge(refreshed) { _, remote in remote }
+            }
+        }
+    }
+
+    private func requiredChinaCalendarYears(around date: Date) -> Set<Int> {
+        let calendar = Calendar.current
+        let nextWeek = calendar.date(byAdding: .day, value: 7, to: date) ?? date
+        return [
+            calendar.component(.year, from: date),
+            calendar.component(.year, from: nextWeek)
+        ]
+    }
+
+    private func showWeeklyWarningIfNeeded(at date: Date) {
+        guard config.weeklyWarningEnabled, currentRecord?.firstMatchedAt != nil else {
+            return
+        }
+
+        let todayKey = ChinaWorkdayCalendar.dateFormatter.string(from: date)
+        let tomorrowKey = dateKey(daysAfter: 1, from: date)
+        let dayAfterTomorrowKey = dateKey(daysAfter: 2, from: date)
+
+        guard isChinaWorkday(todayKey) else {
+            return
+        }
+
+        let tomorrowIsWorkday = isChinaWorkday(tomorrowKey)
+        let dayAfterTomorrowIsWorkday = isChinaWorkday(dayAfterTomorrowKey)
+        let reminderKind: WeeklyReminderKind?
+
+        if !tomorrowIsWorkday {
+            reminderKind = .lastWorkdayBeforeRest
+        } else if !dayAfterTomorrowIsWorkday {
+            reminderKind = .dayBeforeLastWorkday
+        } else {
+            reminderKind = nil
+        }
+
+        guard let reminderKind, !hasShownWeeklyReminder(kind: reminderKind, dateKey: todayKey) else {
+            return
+        }
+
+        let status = WeeklyWorkdaySummarizer.status(
+            records: records,
+            targetSeconds: config.weeklyTargetSeconds,
+            at: date
+        )
+
+        guard !status.isTargetReached else {
+            return
+        }
+
+        markWeeklyReminderShown(kind: reminderKind, dateKey: todayKey)
+        showWeeklyWarning(kind: reminderKind, status: status)
+    }
+
+    private func showWeeklyWarning(kind: WeeklyReminderKind, status: WeeklyWorkdayStatus) {
+        let remainingSeconds = max(0, status.targetSeconds - status.totalSeconds)
+        let message: String
+
+        switch kind {
+        case .lastWorkdayBeforeRest:
+            message = config.weeklyWarningMessage
+        case .dayBeforeLastWorkday:
+            message = config.weeklyPreRestReminderMessage
+        }
+
+        NSApp.activate(ignoringOtherApps: true)
+
+        let alert = NSAlert()
+        alert.messageText = "周时长提醒"
+        alert.informativeText = """
+        \(message)
+
+        本周已记录：\(DakaFormatters.duration(status.totalSeconds))
+        周目标：\(DakaFormatters.duration(status.targetSeconds))
+        还差：\(DakaFormatters.duration(remainingSeconds))
+        """
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: "知道了")
+        alert.runModal()
+    }
+
+    private func isChinaWorkday(_ dateKey: String) -> Bool {
+        guard let year = ChinaWorkdayCalendar.year(from: dateKey) else {
+            return false
+        }
+        return chinaCalendar.isWorkday(dateKey: dateKey, holidayYear: holidayYears[year])
+    }
+
+    private func dateKey(daysAfter days: Int, from date: Date) -> String {
+        let nextDate = Calendar.current.date(byAdding: .day, value: days, to: date) ?? date
+        return ChinaWorkdayCalendar.dateFormatter.string(from: nextDate)
+    }
+
+    private func hasShownWeeklyReminder(kind: WeeklyReminderKind, dateKey: String) -> Bool {
+        UserDefaults.standard.bool(forKey: weeklyReminderDefaultsKey(kind: kind, dateKey: dateKey))
+    }
+
+    private func markWeeklyReminderShown(kind: WeeklyReminderKind, dateKey: String) {
+        UserDefaults.standard.set(true, forKey: weeklyReminderDefaultsKey(kind: kind, dateKey: dateKey))
+    }
+
+    private func weeklyReminderDefaultsKey(kind: WeeklyReminderKind, dateKey: String) -> String {
+        "Daka.weeklyReminder.\(kind.rawValue).\(dateKey)"
+    }
+}
+
+private enum WeeklyReminderKind: String {
+    case lastWorkdayBeforeRest
+    case dayBeforeLastWorkday
 }

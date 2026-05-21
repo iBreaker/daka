@@ -6,24 +6,40 @@ public struct AppConfig: Codable, Equatable, Sendable {
     public var evaluationIntervalSeconds: TimeInterval
     public var targetDurationSeconds: TimeInterval
     public var monthlyAverageTargetSeconds: TimeInterval
+    public var weeklyWarningEnabled: Bool
+    public var weeklyTargetSeconds: TimeInterval
+    public var weeklyWarningMessage: String
+    public var weeklyPreRestReminderMessage: String
 
     private enum CodingKeys: String, CodingKey {
         case rule
         case evaluationIntervalSeconds
         case targetDurationSeconds
         case monthlyAverageTargetSeconds
+        case weeklyWarningEnabled
+        case weeklyTargetSeconds
+        case weeklyWarningMessage
+        case weeklyPreRestReminderMessage
     }
 
     public init(
         rule: TimerRule,
         evaluationIntervalSeconds: TimeInterval,
         targetDurationSeconds: TimeInterval = 10.5 * 60 * 60,
-        monthlyAverageTargetSeconds: TimeInterval = 10.5 * 60 * 60
+        monthlyAverageTargetSeconds: TimeInterval = 10.5 * 60 * 60,
+        weeklyWarningEnabled: Bool = true,
+        weeklyTargetSeconds: TimeInterval = 5 * 9.5 * 60 * 60,
+        weeklyWarningMessage: String = AppConfig.defaultWeeklyWarningMessage,
+        weeklyPreRestReminderMessage: String = AppConfig.defaultWeeklyPreRestReminderMessage
     ) {
         self.rule = rule
         self.evaluationIntervalSeconds = evaluationIntervalSeconds
         self.targetDurationSeconds = targetDurationSeconds
         self.monthlyAverageTargetSeconds = monthlyAverageTargetSeconds
+        self.weeklyWarningEnabled = weeklyWarningEnabled
+        self.weeklyTargetSeconds = weeklyTargetSeconds
+        self.weeklyWarningMessage = weeklyWarningMessage
+        self.weeklyPreRestReminderMessage = weeklyPreRestReminderMessage
     }
 
     public init(from decoder: Decoder) throws {
@@ -32,13 +48,24 @@ public struct AppConfig: Codable, Equatable, Sendable {
         self.evaluationIntervalSeconds = try container.decode(TimeInterval.self, forKey: .evaluationIntervalSeconds)
         self.targetDurationSeconds = try container.decodeIfPresent(TimeInterval.self, forKey: .targetDurationSeconds) ?? 10.5 * 60 * 60
         self.monthlyAverageTargetSeconds = try container.decodeIfPresent(TimeInterval.self, forKey: .monthlyAverageTargetSeconds) ?? self.targetDurationSeconds
+        self.weeklyWarningEnabled = try container.decodeIfPresent(Bool.self, forKey: .weeklyWarningEnabled) ?? true
+        self.weeklyTargetSeconds = try container.decodeIfPresent(TimeInterval.self, forKey: .weeklyTargetSeconds) ?? self.targetDurationSeconds * 5
+        self.weeklyWarningMessage = try container.decodeIfPresent(String.self, forKey: .weeklyWarningMessage) ?? Self.defaultWeeklyWarningMessage
+        self.weeklyPreRestReminderMessage = try container.decodeIfPresent(String.self, forKey: .weeklyPreRestReminderMessage) ?? Self.defaultWeeklyPreRestReminderMessage
     }
+
+    public static let defaultWeeklyWarningMessage = "本周时长还没到目标，今天别跑太早。"
+    public static let defaultWeeklyPreRestReminderMessage = "明天是最后一个工作日，后面就是休息日，注意本周时长；如果明天需要早点遛的话，今天可以多攒一点。"
 
     public static let `default` = AppConfig(
         rule: .defaultRule,
         evaluationIntervalSeconds: 60,
         targetDurationSeconds: 10.5 * 60 * 60,
-        monthlyAverageTargetSeconds: 10.5 * 60 * 60
+        monthlyAverageTargetSeconds: 10.5 * 60 * 60,
+        weeklyWarningEnabled: true,
+        weeklyTargetSeconds: 5 * 9.5 * 60 * 60,
+        weeklyWarningMessage: defaultWeeklyWarningMessage,
+        weeklyPreRestReminderMessage: defaultWeeklyPreRestReminderMessage
     )
 }
 

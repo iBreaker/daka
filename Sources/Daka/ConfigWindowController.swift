@@ -12,6 +12,10 @@ final class ConfigWindowController: NSWindowController {
     private let intervalField = NSTextField()
     private let targetHoursField = NSTextField()
     private let monthlyAverageTargetHoursField = NSTextField()
+    private let weeklyWarningEnabledButton = NSButton(checkboxWithTitle: "开启周预警", target: nil, action: nil)
+    private let weeklyTargetHoursField = NSTextField()
+    private let weeklyWarningMessageField = NSTextField()
+    private let weeklyPreRestReminderMessageField = NSTextField()
     private let tableView = NSTableView()
     private let typePopup = NSPopUpButton()
     private let primaryField = NSTextField()
@@ -32,7 +36,7 @@ final class ConfigWindowController: NSWindowController {
         self.drafts = config.rule.conditions.map(ConditionDraft.init(condition:))
 
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 700, height: 480),
+            contentRect: NSRect(x: 0, y: 0, width: 760, height: 640),
             styleMask: [.titled, .closable, .miniaturizable, .resizable],
             backing: .buffered,
             defer: false
@@ -89,11 +93,21 @@ final class ConfigWindowController: NSWindowController {
         monthlyAverageTargetHoursField.placeholderString = "10.5"
         root.addArrangedSubview(formRow(label: "月均达标(小时)", view: monthlyAverageTargetHoursField))
 
+        weeklyTargetHoursField.placeholderString = "47.5"
+        root.addArrangedSubview(formRow(label: "周目标(小时)", view: weeklyTargetHoursField))
+        root.addArrangedSubview(formRow(label: "周预警", view: weeklyWarningEnabledButton))
+
+        weeklyWarningMessageField.placeholderString = AppConfig.defaultWeeklyWarningMessage
+        root.addArrangedSubview(formRow(label: "当天提醒", view: weeklyWarningMessageField))
+
+        weeklyPreRestReminderMessageField.placeholderString = AppConfig.defaultWeeklyPreRestReminderMessage
+        root.addArrangedSubview(formRow(label: "前一天提醒", view: weeklyPreRestReminderMessageField))
+
         let body = NSStackView()
         body.orientation = .horizontal
         body.spacing = 16
         root.addArrangedSubview(body)
-        body.heightAnchor.constraint(equalToConstant: 270).isActive = true
+        body.heightAnchor.constraint(equalToConstant: 240).isActive = true
 
         setupTable()
         let scrollView = NSScrollView()
@@ -205,6 +219,10 @@ final class ConfigWindowController: NSWindowController {
         intervalField.stringValue = String(Int(config.evaluationIntervalSeconds))
         targetHoursField.stringValue = DakaFormatters.decimalHours(config.targetDurationSeconds)
         monthlyAverageTargetHoursField.stringValue = DakaFormatters.decimalHours(config.monthlyAverageTargetSeconds)
+        weeklyTargetHoursField.stringValue = DakaFormatters.decimalHours(config.weeklyTargetSeconds)
+        weeklyWarningEnabledButton.state = config.weeklyWarningEnabled ? .on : .off
+        weeklyWarningMessageField.stringValue = config.weeklyWarningMessage
+        weeklyPreRestReminderMessageField.stringValue = config.weeklyPreRestReminderMessage
         tableView.reloadData()
 
         if !drafts.isEmpty {
@@ -372,6 +390,9 @@ final class ConfigWindowController: NSWindowController {
         let interval = TimeInterval(Int(intervalField.stringValue) ?? 60)
         let targetHours = Double(targetHoursField.stringValue) ?? 10.5
         let monthlyAverageTargetHours = Double(monthlyAverageTargetHoursField.stringValue) ?? targetHours
+        let weeklyTargetHours = Double(weeklyTargetHoursField.stringValue) ?? 47.5
+        let weeklyWarningMessage = weeklyWarningMessageField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        let weeklyPreRestReminderMessage = weeklyPreRestReminderMessageField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
         let ruleName = nameField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
 
         let nextConfig = AppConfig(
@@ -382,7 +403,11 @@ final class ConfigWindowController: NSWindowController {
             ),
             evaluationIntervalSeconds: max(10, interval),
             targetDurationSeconds: max(0.25, targetHours) * 60 * 60,
-            monthlyAverageTargetSeconds: max(0.25, monthlyAverageTargetHours) * 60 * 60
+            monthlyAverageTargetSeconds: max(0.25, monthlyAverageTargetHours) * 60 * 60,
+            weeklyWarningEnabled: weeklyWarningEnabledButton.state == .on,
+            weeklyTargetSeconds: max(0.25, weeklyTargetHours) * 60 * 60,
+            weeklyWarningMessage: weeklyWarningMessage.isEmpty ? AppConfig.defaultWeeklyWarningMessage : weeklyWarningMessage,
+            weeklyPreRestReminderMessage: weeklyPreRestReminderMessage.isEmpty ? AppConfig.defaultWeeklyPreRestReminderMessage : weeklyPreRestReminderMessage
         )
 
         onSave(nextConfig)

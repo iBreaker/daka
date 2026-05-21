@@ -224,3 +224,42 @@ public enum MonthlyWorkdaySummarizer {
         }
     }
 }
+
+public struct WeeklyWorkdayStatus: Equatable, Sendable {
+    public var weekStartDate: String
+    public var totalSeconds: TimeInterval
+    public var targetSeconds: TimeInterval
+    public var isTargetReached: Bool
+}
+
+public enum WeeklyWorkdaySummarizer {
+    public static func status(
+        records: [DailyRecord],
+        targetSeconds: TimeInterval,
+        at date: Date = Date()
+    ) -> WeeklyWorkdayStatus {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = .current
+        calendar.firstWeekday = 2
+
+        let startOfToday = calendar.startOfDay(for: date)
+        let daysFromMonday = (calendar.component(.weekday, from: startOfToday) + 5) % 7
+        let weekStart = calendar.date(byAdding: .day, value: -daysFromMonday, to: startOfToday) ?? startOfToday
+        let startKey = ChinaWorkdayCalendar.dateFormatter.string(from: weekStart)
+        let todayKey = ChinaWorkdayCalendar.dateFormatter.string(from: startOfToday)
+
+        let totalSeconds = records.reduce(TimeInterval(0)) { partial, record in
+            guard record.date >= startKey, record.date <= todayKey else {
+                return partial
+            }
+            return partial + (record.spanSeconds ?? 0)
+        }
+
+        return WeeklyWorkdayStatus(
+            weekStartDate: startKey,
+            totalSeconds: totalSeconds,
+            targetSeconds: targetSeconds,
+            isTargetReached: totalSeconds >= targetSeconds
+        )
+    }
+}
