@@ -2,7 +2,7 @@ class Daka < Formula
   desc "macOS menu bar tracker for daily clock-in span"
   homepage "https://github.com/iBreaker/daka"
   url "https://github.com/iBreaker/daka/archive/refs/tags/v0.1.0.tar.gz"
-  sha256 "PLACEHOLDER"
+  sha256 "2e10fb17c43deca902bbe3d89f976ab328bba980f0b1e2b07559cd2e37f6270e"
   license :cannot_represent
   head "https://github.com/iBreaker/daka.git", branch: "main"
 
@@ -21,7 +21,7 @@ class Daka < Formula
   end
 
   test do
-    assert_predicate bin/"daka", :exist?
+    assert_path_exists bin/"daka"
     assert_predicate bin/"daka", :executable?
   end
 end
