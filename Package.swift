@@ -5,7 +5,7 @@ import PackageDescription
 let package = Package(
     name: "Daka",
     platforms: [
-        .macOS(.v13)
+        .macOS(.v12)
     ],
     products: [
         .executable(name: "daka", targets: ["Daka"])
