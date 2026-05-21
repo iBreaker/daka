@@ -228,6 +228,8 @@ public enum MonthlyWorkdaySummarizer {
 public struct WeeklyWorkdayStatus: Equatable, Sendable {
     public var weekStartDate: String
     public var totalSeconds: TimeInterval
+    public var averageSeconds: TimeInterval
+    public var workdayCount: Int
     public var targetSeconds: TimeInterval
     public var isTargetReached: Bool
 }
@@ -236,6 +238,8 @@ public enum WeeklyWorkdaySummarizer {
     public static func status(
         records: [DailyRecord],
         targetSeconds: TimeInterval,
+        holidayYears: [Int: ChinaHolidayYear],
+        calendar workdayCalendar: ChinaWorkdayCalendar = ChinaWorkdayCalendar(),
         at date: Date = Date()
     ) -> WeeklyWorkdayStatus {
         var calendar = Calendar(identifier: .gregorian)
@@ -246,20 +250,38 @@ public enum WeeklyWorkdaySummarizer {
         let daysFromMonday = (calendar.component(.weekday, from: startOfToday) + 5) % 7
         let weekStart = calendar.date(byAdding: .day, value: -daysFromMonday, to: startOfToday) ?? startOfToday
         let startKey = ChinaWorkdayCalendar.dateFormatter.string(from: weekStart)
-        let todayKey = ChinaWorkdayCalendar.dateFormatter.string(from: startOfToday)
-
-        let totalSeconds = records.reduce(TimeInterval(0)) { partial, record in
-            guard record.date >= startKey, record.date <= todayKey else {
-                return partial
+        let recordByDate = Dictionary(uniqueKeysWithValues: records.map { ($0.date, $0) })
+        let dateKeys = dateKeysInWeek(start: weekStart, through: startOfToday, calendar: calendar)
+        let workdayKeys = dateKeys.filter { dateKey in
+            guard let year = ChinaWorkdayCalendar.year(from: dateKey) else {
+                return false
             }
-            return partial + (record.spanSeconds ?? 0)
+            return workdayCalendar.isWorkday(dateKey: dateKey, holidayYear: holidayYears[year])
         }
+
+        let totalSeconds = workdayKeys.reduce(TimeInterval(0)) { partial, dateKey in
+            partial + (recordByDate[dateKey]?.spanSeconds ?? 0)
+        }
+        let workdayCount = workdayKeys.count
+        let averageSeconds = workdayCount > 0 ? totalSeconds / TimeInterval(workdayCount) : 0
 
         return WeeklyWorkdayStatus(
             weekStartDate: startKey,
             totalSeconds: totalSeconds,
+            averageSeconds: averageSeconds,
+            workdayCount: workdayCount,
             targetSeconds: targetSeconds,
             isTargetReached: totalSeconds >= targetSeconds
         )
+    }
+
+    private static func dateKeysInWeek(start: Date, through end: Date, calendar: Calendar) -> [String] {
+        let days = calendar.dateComponents([.day], from: start, to: end).day ?? 0
+        return (0...max(0, days)).compactMap { offset in
+            guard let date = calendar.date(byAdding: .day, value: offset, to: start) else {
+                return nil
+            }
+            return ChinaWorkdayCalendar.dateFormatter.string(from: date)
+        }
     }
 }

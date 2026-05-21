@@ -6,18 +6,25 @@ public struct AppConfig: Codable, Equatable, Sendable {
     public var evaluationIntervalSeconds: TimeInterval
     public var targetDurationSeconds: TimeInterval
     public var monthlyAverageTargetSeconds: TimeInterval
-    public var weeklyWarningEnabled: Bool
+    public var restDayReminderEnabled: Bool
     public var weeklyTargetSeconds: TimeInterval
-    public var weeklyWarningMessage: String
-    public var weeklyPreRestReminderMessage: String
+    public var restDayReminderTime: String
+    public var dayBeforeRestReminderTime: String
+    public var restDayReminderMessage: String
+    public var dayBeforeRestReminderMessage: String
 
     private enum CodingKeys: String, CodingKey {
         case rule
         case evaluationIntervalSeconds
         case targetDurationSeconds
         case monthlyAverageTargetSeconds
+        case restDayReminderEnabled
         case weeklyWarningEnabled
         case weeklyTargetSeconds
+        case restDayReminderTime
+        case dayBeforeRestReminderTime
+        case restDayReminderMessage
+        case dayBeforeRestReminderMessage
         case weeklyWarningMessage
         case weeklyPreRestReminderMessage
     }
@@ -27,19 +34,23 @@ public struct AppConfig: Codable, Equatable, Sendable {
         evaluationIntervalSeconds: TimeInterval,
         targetDurationSeconds: TimeInterval = 10.5 * 60 * 60,
         monthlyAverageTargetSeconds: TimeInterval = 10.5 * 60 * 60,
-        weeklyWarningEnabled: Bool = true,
+        restDayReminderEnabled: Bool = true,
         weeklyTargetSeconds: TimeInterval = 5 * 9.5 * 60 * 60,
-        weeklyWarningMessage: String = AppConfig.defaultWeeklyWarningMessage,
-        weeklyPreRestReminderMessage: String = AppConfig.defaultWeeklyPreRestReminderMessage
+        restDayReminderTime: String = AppConfig.defaultRestDayReminderTime,
+        dayBeforeRestReminderTime: String = AppConfig.defaultDayBeforeRestReminderTime,
+        restDayReminderMessage: String = AppConfig.defaultRestDayReminderMessage,
+        dayBeforeRestReminderMessage: String = AppConfig.defaultDayBeforeRestReminderMessage
     ) {
         self.rule = rule
         self.evaluationIntervalSeconds = evaluationIntervalSeconds
         self.targetDurationSeconds = targetDurationSeconds
         self.monthlyAverageTargetSeconds = monthlyAverageTargetSeconds
-        self.weeklyWarningEnabled = weeklyWarningEnabled
+        self.restDayReminderEnabled = restDayReminderEnabled
         self.weeklyTargetSeconds = weeklyTargetSeconds
-        self.weeklyWarningMessage = weeklyWarningMessage
-        self.weeklyPreRestReminderMessage = weeklyPreRestReminderMessage
+        self.restDayReminderTime = restDayReminderTime
+        self.dayBeforeRestReminderTime = dayBeforeRestReminderTime
+        self.restDayReminderMessage = restDayReminderMessage
+        self.dayBeforeRestReminderMessage = dayBeforeRestReminderMessage
     }
 
     public init(from decoder: Decoder) throws {
@@ -48,24 +59,47 @@ public struct AppConfig: Codable, Equatable, Sendable {
         self.evaluationIntervalSeconds = try container.decode(TimeInterval.self, forKey: .evaluationIntervalSeconds)
         self.targetDurationSeconds = try container.decodeIfPresent(TimeInterval.self, forKey: .targetDurationSeconds) ?? 10.5 * 60 * 60
         self.monthlyAverageTargetSeconds = try container.decodeIfPresent(TimeInterval.self, forKey: .monthlyAverageTargetSeconds) ?? self.targetDurationSeconds
-        self.weeklyWarningEnabled = try container.decodeIfPresent(Bool.self, forKey: .weeklyWarningEnabled) ?? true
+        self.restDayReminderEnabled = try container.decodeIfPresent(Bool.self, forKey: .restDayReminderEnabled)
+            ?? (try container.decodeIfPresent(Bool.self, forKey: .weeklyWarningEnabled) ?? true)
         self.weeklyTargetSeconds = try container.decodeIfPresent(TimeInterval.self, forKey: .weeklyTargetSeconds) ?? self.targetDurationSeconds * 5
-        self.weeklyWarningMessage = try container.decodeIfPresent(String.self, forKey: .weeklyWarningMessage) ?? Self.defaultWeeklyWarningMessage
-        self.weeklyPreRestReminderMessage = try container.decodeIfPresent(String.self, forKey: .weeklyPreRestReminderMessage) ?? Self.defaultWeeklyPreRestReminderMessage
+        self.restDayReminderTime = try container.decodeIfPresent(String.self, forKey: .restDayReminderTime) ?? Self.defaultRestDayReminderTime
+        self.dayBeforeRestReminderTime = try container.decodeIfPresent(String.self, forKey: .dayBeforeRestReminderTime) ?? Self.defaultDayBeforeRestReminderTime
+        self.restDayReminderMessage = try container.decodeIfPresent(String.self, forKey: .restDayReminderMessage)
+            ?? (try container.decodeIfPresent(String.self, forKey: .weeklyWarningMessage) ?? Self.defaultRestDayReminderMessage)
+        self.dayBeforeRestReminderMessage = try container.decodeIfPresent(String.self, forKey: .dayBeforeRestReminderMessage)
+            ?? (try container.decodeIfPresent(String.self, forKey: .weeklyPreRestReminderMessage) ?? Self.defaultDayBeforeRestReminderMessage)
     }
 
-    public static let defaultWeeklyWarningMessage = "本周时长还没到目标，今天别跑太早。"
-    public static let defaultWeeklyPreRestReminderMessage = "明天是最后一个工作日，后面就是休息日，注意本周时长；如果明天需要早点遛的话，今天可以多攒一点。"
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(rule, forKey: .rule)
+        try container.encode(evaluationIntervalSeconds, forKey: .evaluationIntervalSeconds)
+        try container.encode(targetDurationSeconds, forKey: .targetDurationSeconds)
+        try container.encode(monthlyAverageTargetSeconds, forKey: .monthlyAverageTargetSeconds)
+        try container.encode(restDayReminderEnabled, forKey: .restDayReminderEnabled)
+        try container.encode(weeklyTargetSeconds, forKey: .weeklyTargetSeconds)
+        try container.encode(restDayReminderTime, forKey: .restDayReminderTime)
+        try container.encode(dayBeforeRestReminderTime, forKey: .dayBeforeRestReminderTime)
+        try container.encode(restDayReminderMessage, forKey: .restDayReminderMessage)
+        try container.encode(dayBeforeRestReminderMessage, forKey: .dayBeforeRestReminderMessage)
+    }
+
+    public static let defaultRestDayReminderTime = "09:30"
+    public static let defaultDayBeforeRestReminderTime = "18:00"
+    public static let defaultRestDayReminderMessage = "明天就是休息日，本周时长还没到目标，今天别跑太早。"
+    public static let defaultDayBeforeRestReminderMessage = "明天是最后一个工作日，后面就是休息日，注意本周时长；如果明天需要早点遛的话，今天可以多攒一点。"
 
     public static let `default` = AppConfig(
         rule: .defaultRule,
         evaluationIntervalSeconds: 60,
         targetDurationSeconds: 10.5 * 60 * 60,
         monthlyAverageTargetSeconds: 10.5 * 60 * 60,
-        weeklyWarningEnabled: true,
+        restDayReminderEnabled: true,
         weeklyTargetSeconds: 5 * 9.5 * 60 * 60,
-        weeklyWarningMessage: defaultWeeklyWarningMessage,
-        weeklyPreRestReminderMessage: defaultWeeklyPreRestReminderMessage
+        restDayReminderTime: defaultRestDayReminderTime,
+        dayBeforeRestReminderTime: defaultDayBeforeRestReminderTime,
+        restDayReminderMessage: defaultRestDayReminderMessage,
+        dayBeforeRestReminderMessage: defaultDayBeforeRestReminderMessage
     )
 }
 

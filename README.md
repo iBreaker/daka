@@ -71,8 +71,9 @@ Evaluation interval
 Daily target hours
 Monthly average target hours
 Weekly target hours
-Weekly warning on/off
-Weekly warning messages
+Rest-day reminder on/off
+Rest-day reminder times
+Rest-day reminder messages
 Add/remove conditions
 Condition parameters
 Wi-Fi SSID selection from nearby/current networks
@@ -155,16 +156,16 @@ China workdays are loaded from the public `holiday-calendar` CN JSON data and ca
 
 If a year cannot be loaded yet, Daka temporarily falls back to Monday-Friday for that year. Missing workday records count as `0m`, and the current month is calculated only up to today.
 
-## Weekly Warning
+## Rest-Day Reminder
 
-Daka can warn when the current China workweek has not reached the configured weekly target:
+Daka can warn when the current China workweek has not reached the configured weekly target and a rest day is near:
 
 ```text
-Last workday before a rest day: shows the same-day weekly warning
-Day before the last workday: shows the pre-rest reminder
+Last workday before a rest day: shows the rest-day reminder after its configured time
+Day before the last workday: shows the day-before reminder after its configured time
 ```
 
-Both reminder messages are editable in `配置...`. The reminder is shown after the first confirmed clock-in for that day and only once per day.
+Both reminder times and messages are editable in `配置...`. Each reminder is shown only once per day. The reminder includes total weekly duration, average duration per elapsed China workday, weekly target, and remaining duration.
 
 ## Test
 

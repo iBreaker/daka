@@ -12,10 +12,12 @@ final class ConfigWindowController: NSWindowController {
     private let intervalField = NSTextField()
     private let targetHoursField = NSTextField()
     private let monthlyAverageTargetHoursField = NSTextField()
-    private let weeklyWarningEnabledButton = NSButton(checkboxWithTitle: "开启周预警", target: nil, action: nil)
+    private let restDayReminderEnabledButton = NSButton(checkboxWithTitle: "开启休息日前提醒", target: nil, action: nil)
     private let weeklyTargetHoursField = NSTextField()
-    private let weeklyWarningMessageField = NSTextField()
-    private let weeklyPreRestReminderMessageField = NSTextField()
+    private let restDayReminderTimeField = NSTextField()
+    private let dayBeforeRestReminderTimeField = NSTextField()
+    private let restDayReminderMessageField = NSTextField()
+    private let dayBeforeRestReminderMessageField = NSTextField()
     private let tableView = NSTableView()
     private let typePopup = NSPopUpButton()
     private let primaryField = NSTextField()
@@ -95,13 +97,19 @@ final class ConfigWindowController: NSWindowController {
 
         weeklyTargetHoursField.placeholderString = "47.5"
         root.addArrangedSubview(formRow(label: "周目标(小时)", view: weeklyTargetHoursField))
-        root.addArrangedSubview(formRow(label: "周预警", view: weeklyWarningEnabledButton))
+        root.addArrangedSubview(formRow(label: "休息日前提醒", view: restDayReminderEnabledButton))
 
-        weeklyWarningMessageField.placeholderString = AppConfig.defaultWeeklyWarningMessage
-        root.addArrangedSubview(formRow(label: "当天提醒", view: weeklyWarningMessageField))
+        restDayReminderTimeField.placeholderString = AppConfig.defaultRestDayReminderTime
+        root.addArrangedSubview(formRow(label: "休息前时间", view: restDayReminderTimeField))
 
-        weeklyPreRestReminderMessageField.placeholderString = AppConfig.defaultWeeklyPreRestReminderMessage
-        root.addArrangedSubview(formRow(label: "前一天提醒", view: weeklyPreRestReminderMessageField))
+        dayBeforeRestReminderTimeField.placeholderString = AppConfig.defaultDayBeforeRestReminderTime
+        root.addArrangedSubview(formRow(label: "前一天时间", view: dayBeforeRestReminderTimeField))
+
+        restDayReminderMessageField.placeholderString = AppConfig.defaultRestDayReminderMessage
+        root.addArrangedSubview(formRow(label: "休息前文案", view: restDayReminderMessageField))
+
+        dayBeforeRestReminderMessageField.placeholderString = AppConfig.defaultDayBeforeRestReminderMessage
+        root.addArrangedSubview(formRow(label: "前一天文案", view: dayBeforeRestReminderMessageField))
 
         let body = NSStackView()
         body.orientation = .horizontal
@@ -220,9 +228,11 @@ final class ConfigWindowController: NSWindowController {
         targetHoursField.stringValue = DakaFormatters.decimalHours(config.targetDurationSeconds)
         monthlyAverageTargetHoursField.stringValue = DakaFormatters.decimalHours(config.monthlyAverageTargetSeconds)
         weeklyTargetHoursField.stringValue = DakaFormatters.decimalHours(config.weeklyTargetSeconds)
-        weeklyWarningEnabledButton.state = config.weeklyWarningEnabled ? .on : .off
-        weeklyWarningMessageField.stringValue = config.weeklyWarningMessage
-        weeklyPreRestReminderMessageField.stringValue = config.weeklyPreRestReminderMessage
+        restDayReminderEnabledButton.state = config.restDayReminderEnabled ? .on : .off
+        restDayReminderTimeField.stringValue = config.restDayReminderTime
+        dayBeforeRestReminderTimeField.stringValue = config.dayBeforeRestReminderTime
+        restDayReminderMessageField.stringValue = config.restDayReminderMessage
+        dayBeforeRestReminderMessageField.stringValue = config.dayBeforeRestReminderMessage
         tableView.reloadData()
 
         if !drafts.isEmpty {
@@ -391,8 +401,10 @@ final class ConfigWindowController: NSWindowController {
         let targetHours = Double(targetHoursField.stringValue) ?? 10.5
         let monthlyAverageTargetHours = Double(monthlyAverageTargetHoursField.stringValue) ?? targetHours
         let weeklyTargetHours = Double(weeklyTargetHoursField.stringValue) ?? 47.5
-        let weeklyWarningMessage = weeklyWarningMessageField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
-        let weeklyPreRestReminderMessage = weeklyPreRestReminderMessageField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        let restDayReminderTime = validTimeString(restDayReminderTimeField.stringValue, fallback: AppConfig.defaultRestDayReminderTime)
+        let dayBeforeRestReminderTime = validTimeString(dayBeforeRestReminderTimeField.stringValue, fallback: AppConfig.defaultDayBeforeRestReminderTime)
+        let restDayReminderMessage = restDayReminderMessageField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        let dayBeforeRestReminderMessage = dayBeforeRestReminderMessageField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
         let ruleName = nameField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
 
         let nextConfig = AppConfig(
@@ -404,10 +416,12 @@ final class ConfigWindowController: NSWindowController {
             evaluationIntervalSeconds: max(10, interval),
             targetDurationSeconds: max(0.25, targetHours) * 60 * 60,
             monthlyAverageTargetSeconds: max(0.25, monthlyAverageTargetHours) * 60 * 60,
-            weeklyWarningEnabled: weeklyWarningEnabledButton.state == .on,
+            restDayReminderEnabled: restDayReminderEnabledButton.state == .on,
             weeklyTargetSeconds: max(0.25, weeklyTargetHours) * 60 * 60,
-            weeklyWarningMessage: weeklyWarningMessage.isEmpty ? AppConfig.defaultWeeklyWarningMessage : weeklyWarningMessage,
-            weeklyPreRestReminderMessage: weeklyPreRestReminderMessage.isEmpty ? AppConfig.defaultWeeklyPreRestReminderMessage : weeklyPreRestReminderMessage
+            restDayReminderTime: restDayReminderTime,
+            dayBeforeRestReminderTime: dayBeforeRestReminderTime,
+            restDayReminderMessage: restDayReminderMessage.isEmpty ? AppConfig.defaultRestDayReminderMessage : restDayReminderMessage,
+            dayBeforeRestReminderMessage: dayBeforeRestReminderMessage.isEmpty ? AppConfig.defaultDayBeforeRestReminderMessage : dayBeforeRestReminderMessage
         )
 
         onSave(nextConfig)
@@ -422,6 +436,23 @@ final class ConfigWindowController: NSWindowController {
         let alert = NSAlert()
         alert.messageText = message
         alert.runModal()
+    }
+
+    private func validTimeString(_ value: String, fallback: String) -> String {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        let pattern = #"^([01]?[0-9]|2[0-3]):[0-5][0-9]$"#
+        guard trimmed.range(of: pattern, options: .regularExpression) != nil else {
+            return fallback
+        }
+
+        let parts = trimmed.split(separator: ":")
+        guard parts.count == 2,
+              let hour = Int(parts[0]),
+              let minute = Int(parts[1]) else {
+            return fallback
+        }
+
+        return String(format: "%02d:%02d", hour, minute)
     }
 }
 
