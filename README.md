@@ -8,6 +8,19 @@ macOS menu bar tracker for recording the first and last time a configurable rule
 swift run daka
 ```
 
+## Install with Homebrew
+
+```bash
+brew install iBreaker/daka/daka
+brew services start daka
+```
+
+To stop it:
+
+```bash
+brew services stop daka
+```
+
 For a direct local start in release mode:
 
 ```bash
