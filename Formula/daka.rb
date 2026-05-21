@@ -6,8 +6,6 @@ class Daka < Formula
   license :cannot_represent
   head "https://github.com/iBreaker/daka.git", branch: "main"
 
-  depends_on xcode: ["15.0", :build]
-
   def install
     system "swift", "build", "-c", "release", "--disable-sandbox"
     bin.install ".build/release/daka"
