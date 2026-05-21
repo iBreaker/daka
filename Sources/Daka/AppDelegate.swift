@@ -249,7 +249,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         persistCurrentRecord()
 
         if let statsWindowController {
-            statsWindowController.update(records: records, targetDurationSeconds: config.targetDurationSeconds)
+            statsWindowController.update(
+                records: records,
+                targetDurationSeconds: config.targetDurationSeconds,
+                monthlyAverageTargetSeconds: config.monthlyAverageTargetSeconds
+            )
             statsWindowController.showWindow(nil)
             NSApp.activate(ignoringOtherApps: true)
             return
@@ -257,7 +261,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         let controller = StatsWindowController(
             records: records,
-            targetDurationSeconds: config.targetDurationSeconds
+            targetDurationSeconds: config.targetDurationSeconds,
+            monthlyAverageTargetSeconds: config.monthlyAverageTargetSeconds
         ) { [weak self] updatedRecords in
             self?.saveRecordsFromStats(updatedRecords)
         }

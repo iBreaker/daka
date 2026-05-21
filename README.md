@@ -8,6 +8,24 @@ macOS menu bar tracker for recording the first and last time a configurable rule
 swift run daka
 ```
 
+For a direct local start in release mode:
+
+```bash
+./scripts/daka-launcher.sh
+```
+
+To install it as a login startup item and start it immediately:
+
+```bash
+./scripts/install-autostart.sh
+```
+
+To remove the login startup item:
+
+```bash
+./scripts/uninstall-autostart.sh
+```
+
 The app stores data in SQLite on first launch:
 
 ```text
@@ -51,6 +69,7 @@ Rule name
 Match mode: all / any
 Evaluation interval
 Daily target hours
+Monthly average target hours
 Add/remove conditions
 Condition parameters
 Wi-Fi SSID selection from nearby/current networks
@@ -120,6 +139,18 @@ Example:
 ```
 
 Use `配置...` from the menu bar to edit and save the rule.
+
+## Monthly Workday Statistics
+
+The statistics window includes a `月度` tab. It calculates each natural month's average duration across China workdays.
+
+China workdays are loaded from the public `holiday-calendar` CN JSON data and cached locally:
+
+```text
+~/Library/Application Support/Daka/ChinaCalendar/
+```
+
+If a year cannot be loaded yet, Daka temporarily falls back to Monday-Friday for that year. Missing workday records count as `0m`, and the current month is calculated only up to today.
 
 ## Test
 

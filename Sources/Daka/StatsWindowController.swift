@@ -5,19 +5,32 @@ import Foundation
 final class StatsWindowController: NSWindowController {
     private var records: [DailyRecord]
     private var targetDurationSeconds: TimeInterval
+    private var monthlyAverageTargetSeconds: TimeInterval
+    private var monthlySummaries: [MonthlyWorkdaySummary] = []
+    private var holidayYears: [Int: ChinaHolidayYear] = [:]
     private let onSave: ([DailyRecord]) -> Void
     private let tableView = NSTableView()
-    private let tabControl = NSSegmentedControl(labels: ["表格", "趋势", "热力图"], trackingMode: .selectOne, target: nil, action: nil)
+    private let monthlyTableView = NSTableView()
+    private let tabControl = NSSegmentedControl(labels: ["表格", "趋势", "热力图", "月度"], trackingMode: .selectOne, target: nil, action: nil)
     private let contentContainer = NSView()
     private let tableContainer = NSView()
+    private let monthlyContainer = NSView()
     private let trendChartView = TrendChartView()
     private let heatmapView = HeatmapView()
     private let summary = NSTextField(labelWithString: "")
+    private let calendarStatus = NSTextField(labelWithString: "")
     private let editButton = NSButton(title: "编辑时间", target: nil, action: nil)
+    private let chinaCalendar = ChinaWorkdayCalendar()
 
-    init(records: [DailyRecord], targetDurationSeconds: TimeInterval, onSave: @escaping ([DailyRecord]) -> Void) {
+    init(
+        records: [DailyRecord],
+        targetDurationSeconds: TimeInterval,
+        monthlyAverageTargetSeconds: TimeInterval,
+        onSave: @escaping ([DailyRecord]) -> Void
+    ) {
         self.records = records.sorted { $0.date > $1.date }
         self.targetDurationSeconds = targetDurationSeconds
+        self.monthlyAverageTargetSeconds = monthlyAverageTargetSeconds
         self.onSave = onSave
 
         let window = NSWindow(
@@ -31,6 +44,7 @@ final class StatsWindowController: NSWindowController {
 
         super.init(window: window)
         setupUI()
+        refreshMonthlySummaries(fetchRemote: true)
     }
 
     @available(*, unavailable)
@@ -38,11 +52,13 @@ final class StatsWindowController: NSWindowController {
         nil
     }
 
-    func update(records: [DailyRecord], targetDurationSeconds: TimeInterval) {
+    func update(records: [DailyRecord], targetDurationSeconds: TimeInterval, monthlyAverageTargetSeconds: TimeInterval) {
         self.records = records.sorted { $0.date > $1.date }
         self.targetDurationSeconds = targetDurationSeconds
+        self.monthlyAverageTargetSeconds = monthlyAverageTargetSeconds
         summary.stringValue = summaryText
         refreshCharts()
+        refreshMonthlySummaries(fetchRemote: true)
         tableView.reloadData()
     }
 
@@ -92,6 +108,7 @@ final class StatsWindowController: NSWindowController {
         contentContainer.heightAnchor.constraint(greaterThanOrEqualToConstant: 280).isActive = true
 
         setupTableContainer()
+        setupMonthlyContainer()
         setupChartContainers()
         showPanel(tableContainer)
 
@@ -123,6 +140,43 @@ final class StatsWindowController: NSWindowController {
         pin(scrollView, to: tableContainer)
     }
 
+    private func setupMonthlyContainer() {
+        monthlyContainer.translatesAutoresizingMaskIntoConstraints = false
+        contentContainer.addSubview(monthlyContainer)
+        pin(monthlyContainer, to: contentContainer)
+
+        let stack = NSStackView()
+        stack.orientation = .vertical
+        stack.spacing = 8
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        monthlyContainer.addSubview(stack)
+        pin(stack, to: monthlyContainer)
+
+        calendarStatus.textColor = .secondaryLabelColor
+        calendarStatus.font = .systemFont(ofSize: 12)
+        stack.addArrangedSubview(calendarStatus)
+
+        monthlyTableView.delegate = self
+        monthlyTableView.dataSource = self
+        monthlyTableView.usesAlternatingRowBackgroundColors = true
+        monthlyTableView.columnAutoresizingStyle = .uniformColumnAutoresizingStyle
+
+        addMonthlyColumn(id: "month", title: "月份", width: 90)
+        addMonthlyColumn(id: "workdays", title: "工作日", width: 80)
+        addMonthlyColumn(id: "recorded", title: "有记录", width: 80)
+        addMonthlyColumn(id: "total", title: "总时长", width: 100)
+        addMonthlyColumn(id: "average", title: "日均", width: 100)
+        addMonthlyColumn(id: "status", title: "达标", width: 70)
+        addMonthlyColumn(id: "calendar", title: "日历", width: 80)
+
+        let scrollView = NSScrollView()
+        scrollView.documentView = monthlyTableView
+        scrollView.hasVerticalScroller = true
+        scrollView.borderType = .bezelBorder
+        scrollView.translatesAutoresizingMaskIntoConstraints = false
+        stack.addArrangedSubview(scrollView)
+    }
+
     private func setupChartContainers() {
         trendChartView.records = records
         trendChartView.targetDurationSeconds = targetDurationSeconds
@@ -139,7 +193,7 @@ final class StatsWindowController: NSWindowController {
 
     private var summaryText: String {
         let completed = records.filter { $0.firstMatchedAt != nil && $0.lastMatchedAt != nil }
-        return "共 \(records.count) 天记录，\(completed.count) 天有有效时间，目标 \(DakaFormatters.duration(targetDurationSeconds))"
+        return "共 \(records.count) 天记录，\(completed.count) 天有有效时间，日目标 \(DakaFormatters.duration(targetDurationSeconds))，月均目标 \(DakaFormatters.duration(monthlyAverageTargetSeconds))"
     }
 
     private func addColumn(id: String, title: String, width: CGFloat) {
@@ -147,6 +201,13 @@ final class StatsWindowController: NSWindowController {
         column.title = title
         column.width = width
         tableView.addTableColumn(column)
+    }
+
+    private func addMonthlyColumn(id: String, title: String, width: CGFloat) {
+        let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier(id))
+        column.title = title
+        column.width = width
+        monthlyTableView.addTableColumn(column)
     }
 
     @objc private func editSelectedRecord() {
@@ -176,6 +237,9 @@ final class StatsWindowController: NSWindowController {
         case 2:
             showPanel(heatmapView)
             editButton.isEnabled = false
+        case 3:
+            showPanel(monthlyContainer)
+            editButton.isEnabled = false
         default:
             showPanel(tableContainer)
             editButton.isEnabled = tableView.selectedRow >= 0
@@ -183,7 +247,7 @@ final class StatsWindowController: NSWindowController {
     }
 
     private func showPanel(_ selected: NSView) {
-        for view in [tableContainer, trendChartView, heatmapView] {
+        for view in [tableContainer, trendChartView, heatmapView, monthlyContainer] {
             view.isHidden = view !== selected
         }
     }
@@ -193,6 +257,56 @@ final class StatsWindowController: NSWindowController {
         trendChartView.targetDurationSeconds = targetDurationSeconds
         heatmapView.records = records
         heatmapView.targetDurationSeconds = targetDurationSeconds
+    }
+
+    private func refreshMonthlySummaries(fetchRemote: Bool) {
+        let years = requiredCalendarYears()
+        holidayYears.merge(chinaCalendar.loadCachedYears(years)) { _, cached in cached }
+        monthlySummaries = MonthlyWorkdaySummarizer.summaries(
+            records: records,
+            targetSeconds: monthlyAverageTargetSeconds,
+            holidayYears: holidayYears,
+            calendar: chinaCalendar
+        )
+        calendarStatus.stringValue = calendarStatusText(requiredYears: years)
+        monthlyTableView.reloadData()
+
+        guard fetchRemote, !years.isEmpty else {
+            return
+        }
+
+        chinaCalendar.refreshYears(years) { [weak self] refreshed in
+            DispatchQueue.main.async {
+                guard let self else {
+                    return
+                }
+
+                self.holidayYears.merge(refreshed) { _, remote in remote }
+                self.monthlySummaries = MonthlyWorkdaySummarizer.summaries(
+                    records: self.records,
+                    targetSeconds: self.monthlyAverageTargetSeconds,
+                    holidayYears: self.holidayYears,
+                    calendar: self.chinaCalendar
+                )
+                self.calendarStatus.stringValue = self.calendarStatusText(requiredYears: years)
+                self.monthlyTableView.reloadData()
+            }
+        }
+    }
+
+    private func requiredCalendarYears() -> Set<Int> {
+        var years = Set(records.compactMap { ChinaWorkdayCalendar.year(from: $0.date) })
+        years.insert(Calendar.current.component(.year, from: Date()))
+        return years
+    }
+
+    private func calendarStatusText(requiredYears: Set<Int>) -> String {
+        let missingYears = requiredYears.subtracting(Set(holidayYears.keys)).sorted()
+        if missingYears.isEmpty {
+            return "中国调休日历已加载，当前月统计到今天。"
+        }
+
+        return "缺少 \(missingYears.map(String.init).joined(separator: "、")) 年中国日历，缺失年份暂按周一至周五估算。"
     }
 
     private func pin(_ child: NSView, to parent: NSView) {
@@ -207,12 +321,20 @@ final class StatsWindowController: NSWindowController {
 
 extension StatsWindowController: NSTableViewDataSource, NSTableViewDelegate {
     func numberOfRows(in tableView: NSTableView) -> Int {
-        records.count
+        if tableView === monthlyTableView {
+            return monthlySummaries.count
+        }
+
+        return records.count
     }
 
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
         guard let tableColumn else {
             return nil
+        }
+
+        if tableView === monthlyTableView {
+            return monthlyCell(tableColumn: tableColumn, row: row)
         }
 
         let record = records[row]
@@ -241,7 +363,42 @@ extension StatsWindowController: NSTableViewDataSource, NSTableViewDelegate {
     }
 
     func tableViewSelectionDidChange(_ notification: Notification) {
+        guard let source = notification.object as? NSTableView, source === tableView else {
+            return
+        }
+
         editButton.isEnabled = tableView.selectedRow >= 0
+    }
+
+    private func monthlyCell(tableColumn: NSTableColumn, row: Int) -> NSView? {
+        let summary = monthlySummaries[row]
+        let identifier = NSUserInterfaceItemIdentifier("monthlyStatsCell")
+        let field = monthlyTableView.makeView(withIdentifier: identifier, owner: self) as? NSTextField ?? NSTextField(labelWithString: "")
+        field.identifier = identifier
+        field.textColor = .labelColor
+
+        switch tableColumn.identifier.rawValue {
+        case "month":
+            field.stringValue = summary.month
+        case "workdays":
+            field.stringValue = "\(summary.workdayCount)"
+        case "recorded":
+            field.stringValue = "\(summary.recordedWorkdayCount)"
+        case "total":
+            field.stringValue = DakaFormatters.duration(summary.totalSeconds)
+        case "average":
+            field.stringValue = DakaFormatters.duration(summary.averageSeconds)
+        case "status":
+            field.stringValue = summary.isPassing ? "达标" : "未达标"
+            field.textColor = summary.isPassing ? .systemGreen : .systemRed
+        case "calendar":
+            field.stringValue = summary.usesChinaCalendarData ? "中国" : "估算"
+            field.textColor = summary.usesChinaCalendarData ? .secondaryLabelColor : .systemOrange
+        default:
+            field.stringValue = ""
+        }
+
+        return field
     }
 
     private func progress(for record: DailyRecord) -> Double {

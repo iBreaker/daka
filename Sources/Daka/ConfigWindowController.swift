@@ -11,6 +11,7 @@ final class ConfigWindowController: NSWindowController {
     private let matchModePopup = NSPopUpButton()
     private let intervalField = NSTextField()
     private let targetHoursField = NSTextField()
+    private let monthlyAverageTargetHoursField = NSTextField()
     private let tableView = NSTableView()
     private let typePopup = NSPopUpButton()
     private let primaryField = NSTextField()
@@ -84,6 +85,9 @@ final class ConfigWindowController: NSWindowController {
 
         targetHoursField.placeholderString = "10.5"
         root.addArrangedSubview(formRow(label: "目标时长(小时)", view: targetHoursField))
+
+        monthlyAverageTargetHoursField.placeholderString = "10.5"
+        root.addArrangedSubview(formRow(label: "月均达标(小时)", view: monthlyAverageTargetHoursField))
 
         let body = NSStackView()
         body.orientation = .horizontal
@@ -200,6 +204,7 @@ final class ConfigWindowController: NSWindowController {
         matchModePopup.selectItem(at: config.rule.matchMode == .all ? 0 : 1)
         intervalField.stringValue = String(Int(config.evaluationIntervalSeconds))
         targetHoursField.stringValue = DakaFormatters.decimalHours(config.targetDurationSeconds)
+        monthlyAverageTargetHoursField.stringValue = DakaFormatters.decimalHours(config.monthlyAverageTargetSeconds)
         tableView.reloadData()
 
         if !drafts.isEmpty {
@@ -366,6 +371,7 @@ final class ConfigWindowController: NSWindowController {
 
         let interval = TimeInterval(Int(intervalField.stringValue) ?? 60)
         let targetHours = Double(targetHoursField.stringValue) ?? 10.5
+        let monthlyAverageTargetHours = Double(monthlyAverageTargetHoursField.stringValue) ?? targetHours
         let ruleName = nameField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
 
         let nextConfig = AppConfig(
@@ -375,7 +381,8 @@ final class ConfigWindowController: NSWindowController {
                 conditions: conditions
             ),
             evaluationIntervalSeconds: max(10, interval),
-            targetDurationSeconds: max(0.25, targetHours) * 60 * 60
+            targetDurationSeconds: max(0.25, targetHours) * 60 * 60,
+            monthlyAverageTargetSeconds: max(0.25, monthlyAverageTargetHours) * 60 * 60
         )
 
         onSave(nextConfig)

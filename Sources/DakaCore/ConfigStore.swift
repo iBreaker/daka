@@ -5,21 +5,25 @@ public struct AppConfig: Codable, Equatable, Sendable {
     public var rule: TimerRule
     public var evaluationIntervalSeconds: TimeInterval
     public var targetDurationSeconds: TimeInterval
+    public var monthlyAverageTargetSeconds: TimeInterval
 
     private enum CodingKeys: String, CodingKey {
         case rule
         case evaluationIntervalSeconds
         case targetDurationSeconds
+        case monthlyAverageTargetSeconds
     }
 
     public init(
         rule: TimerRule,
         evaluationIntervalSeconds: TimeInterval,
-        targetDurationSeconds: TimeInterval = 10.5 * 60 * 60
+        targetDurationSeconds: TimeInterval = 10.5 * 60 * 60,
+        monthlyAverageTargetSeconds: TimeInterval = 10.5 * 60 * 60
     ) {
         self.rule = rule
         self.evaluationIntervalSeconds = evaluationIntervalSeconds
         self.targetDurationSeconds = targetDurationSeconds
+        self.monthlyAverageTargetSeconds = monthlyAverageTargetSeconds
     }
 
     public init(from decoder: Decoder) throws {
@@ -27,12 +31,14 @@ public struct AppConfig: Codable, Equatable, Sendable {
         self.rule = try container.decode(TimerRule.self, forKey: .rule)
         self.evaluationIntervalSeconds = try container.decode(TimeInterval.self, forKey: .evaluationIntervalSeconds)
         self.targetDurationSeconds = try container.decodeIfPresent(TimeInterval.self, forKey: .targetDurationSeconds) ?? 10.5 * 60 * 60
+        self.monthlyAverageTargetSeconds = try container.decodeIfPresent(TimeInterval.self, forKey: .monthlyAverageTargetSeconds) ?? self.targetDurationSeconds
     }
 
     public static let `default` = AppConfig(
         rule: .defaultRule,
         evaluationIntervalSeconds: 60,
-        targetDurationSeconds: 10.5 * 60 * 60
+        targetDurationSeconds: 10.5 * 60 * 60,
+        monthlyAverageTargetSeconds: 10.5 * 60 * 60
     )
 }
 
