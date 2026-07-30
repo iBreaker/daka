@@ -9,6 +9,7 @@ public enum TimerCondition: Codable, Equatable, Hashable, Sendable {
     case screenUnlocked
     case wifiConnected(ssid: String)
     case powerConnected
+    case externalDisplayConnected
     case networkReachable(host: String, port: Int)
     case timeRange(start: String, end: String)
 
@@ -25,6 +26,7 @@ public enum TimerCondition: Codable, Equatable, Hashable, Sendable {
         case screenUnlocked
         case wifiConnected
         case powerConnected
+        case externalDisplayConnected
         case networkReachable
         case timeRange
     }
@@ -40,6 +42,8 @@ public enum TimerCondition: Codable, Equatable, Hashable, Sendable {
             self = .wifiConnected(ssid: try container.decode(String.self, forKey: .ssid))
         case .powerConnected:
             self = .powerConnected
+        case .externalDisplayConnected:
+            self = .externalDisplayConnected
         case .networkReachable:
             self = .networkReachable(
                 host: try container.decode(String.self, forKey: .host),
@@ -64,6 +68,8 @@ public enum TimerCondition: Codable, Equatable, Hashable, Sendable {
             try container.encode(ssid, forKey: .ssid)
         case .powerConnected:
             try container.encode(Kind.powerConnected, forKey: .type)
+        case .externalDisplayConnected:
+            try container.encode(Kind.externalDisplayConnected, forKey: .type)
         case let .networkReachable(host, port):
             try container.encode(Kind.networkReachable, forKey: .type)
             try container.encode(host, forKey: .host)

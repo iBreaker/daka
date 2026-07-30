@@ -36,6 +36,8 @@ final class MacConditionChecker: ConditionChecking {
             return wifiSSIDMatches(current: currentSSID(), expected: ssid)
         case .powerConnected:
             return isPowerConnected()
+        case .externalDisplayConnected:
+            return isExternalDisplayConnected()
         case let .networkReachable(host, port):
             return isReachable(host: host, port: port)
         case let .timeRange(start, end):
@@ -65,6 +67,23 @@ final class MacConditionChecker: ConditionChecking {
 
     private func isPowerConnected() -> Bool {
         IOPSCopyExternalPowerAdapterDetails()?.takeRetainedValue() != nil
+    }
+
+    private func isExternalDisplayConnected() -> Bool {
+        var displays = [CGDirectDisplayID](repeating: 0, count: 16)
+        var displayCount: UInt32 = 0
+        let error = CGGetOnlineDisplayList(
+            UInt32(displays.count),
+            &displays,
+            &displayCount
+        )
+        guard error == .success else {
+            return false
+        }
+
+        return displays.prefix(Int(displayCount)).contains {
+            CGDisplayIsBuiltin($0) == 0
+        }
     }
 
     private func isReachable(host: String, port: Int) -> Bool {

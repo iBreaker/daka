@@ -1,7 +1,23 @@
 import AppKit
+import CoreGraphics
 import CoreLocation
 import DakaCore
 import Foundation
+
+private func dakaDisplayReconfigurationCallback(
+    _ display: CGDirectDisplayID,
+    _ flags: CGDisplayChangeSummaryFlags,
+    _ userInfo: UnsafeMutableRawPointer?
+) {
+    guard let userInfo else {
+        return
+    }
+
+    let delegate = Unmanaged<AppDelegate>.fromOpaque(userInfo).takeUnretainedValue()
+    DispatchQueue.main.async {
+        delegate.evaluateAndRender()
+    }
+}
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem!
@@ -24,6 +40,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let chinaCalendar = ChinaWorkdayCalendar()
     private var holidayYears: [Int: ChinaHolidayYear] = [:]
     private var statsPaused = UserDefaults.standard.bool(forKey: "Daka.statsPaused")
+    private var displayReconfigurationCallbackRegistered = false
     private lazy var locationPermissionRequester = LocationPermissionRequester { [weak self] in
         self?.renderMenu()
         self?.updateDashboardIfVisible()
@@ -36,6 +53,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         setupChinaCalendar()
         setupStatusItem()
         setupNotifications()
+        setupDisplayNotifications()
         requestWiFiPermissionIfNeeded()
         evaluateAndRender()
         startTimer()
@@ -46,6 +64,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if let showDashboardObserver {
             DistributedNotificationCenter.default().removeObserver(
                 showDashboardObserver
+            )
+        }
+        if displayReconfigurationCallbackRegistered {
+            CGDisplayRemoveReconfigurationCallback(
+                dakaDisplayReconfigurationCallback,
+                Unmanaged.passUnretained(self).toOpaque()
             )
         }
     }
@@ -74,6 +98,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             currentRecord = nil
             storageError = "无法打开数据存储：\(error.localizedDescription)"
             NSLog("Daka storage setup failed: \(error)")
+        }
+    }
+
+    private func setupDisplayNotifications() {
+        let error = CGDisplayRegisterReconfigurationCallback(
+            dakaDisplayReconfigurationCallback,
+            Unmanaged.passUnretained(self).toOpaque()
+        )
+        displayReconfigurationCallbackRegistered = error == .success
+        if error != .success {
+            NSLog("Daka failed to register display callback: \(error.rawValue)")
         }
     }
 
@@ -135,7 +170,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    @objc private func evaluateAndRender() {
+    @objc fileprivate func evaluateAndRender() {
         guard !evaluationInProgress else {
             evaluationRequestedWhileBusy = true
             return
@@ -158,18 +193,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func finishEvaluation(matched: Bool, at now: Date) {
         evaluationInProgress = false
         let shouldRecord = matched && !statsPaused
+        let wasRecording = lastMatched
 
         currentRecord = recorder.update(record: currentRecord, matched: false, at: now)
-        lastMatched = shouldRecord
 
         if shouldRecord {
             if currentRecord?.firstMatchedAt == nil {
-                showClockInReminderIfNeeded(at: now)
+                if usesExternalDisplayCondition {
+                    currentRecord = recorder.update(record: currentRecord, matched: true, at: now)
+                    persistCurrentRecord()
+                } else {
+                    showClockInReminderIfNeeded(at: now)
+                }
             } else {
                 currentRecord = recorder.update(record: currentRecord, matched: true, at: now)
                 persistCurrentRecord()
             }
+        } else if shouldCloseExternalDisplaySession(wasRecording: wasRecording, matched: matched) {
+            currentRecord?.lastMatchedAt = now
+            persistCurrentRecord()
         }
+        lastMatched = shouldRecord
 
         showRestDayReminderIfNeeded(at: now)
 
@@ -218,7 +262,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(withTitle: "目标时长：\(DakaFormatters.duration(config.targetDurationSeconds))", action: nil, keyEquivalent: "")
         menu.addItem(progressMenuItem())
         menu.addItem(.separator())
-        menu.addItem(withTitle: "当前状态：\(statusText)", action: nil, keyEquivalent: "")
+        menu.addItem(statusMenuItem())
 
         if requiresWiFiPermission {
             let permissionStatus = locationPermissionRequester.status
@@ -290,6 +334,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return lastMatched ? "满足条件" : "未满足条件"
     }
 
+    private var statusDetailText: String {
+        if statsPaused {
+            return "暂停后不会更新今日最后时间"
+        }
+
+        if lastMatched {
+            return "正在记录今日时长"
+        }
+
+        return usesExternalDisplayCondition
+            ? "外接显示屏未连接，已停止刷新"
+            : "等待规则满足后开始记录"
+    }
+
+    private var statusColor: NSColor {
+        if statsPaused {
+            return .secondaryLabelColor
+        }
+
+        return lastMatched ? .systemGreen : .systemRed
+    }
+
     private var progressValue: Double {
         guard let spanSeconds = currentRecord?.spanSeconds, config.targetDurationSeconds > 0 else {
             return 0
@@ -338,6 +404,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         item.view = container
         return item
     }
+
+    private func statusMenuItem() -> NSMenuItem {
+        let title = "● 当前状态：\(statusText) - \(statusDetailText)"
+        let item = NSMenuItem(
+            title: title,
+            action: #selector(ignoreStatusMenuItem),
+            keyEquivalent: ""
+        )
+        item.target = self
+        item.isEnabled = true
+        item.attributedTitle = NSAttributedString(
+            string: title,
+            attributes: [
+                .foregroundColor: statusColor,
+                .font: NSFont.systemFont(ofSize: 13, weight: .semibold)
+            ]
+        )
+        return item
+    }
+
+    @objc private func ignoreStatusMenuItem() {}
 
     @objc private func showConfig() {
         showDashboard(section: .settings)
@@ -549,6 +636,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
             return false
         }
+    }
+
+    private var usesExternalDisplayCondition: Bool {
+        config.rule.conditions.contains {
+            if case .externalDisplayConnected = $0 {
+                return true
+            }
+            return false
+        }
+    }
+
+    private func shouldCloseExternalDisplaySession(wasRecording: Bool, matched: Bool) -> Bool {
+        wasRecording
+            && !matched
+            && !statsPaused
+            && usesExternalDisplayCondition
+            && currentRecord?.firstMatchedAt != nil
     }
 
     private var canConfirmClockIn: Bool {
