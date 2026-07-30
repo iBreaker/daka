@@ -580,6 +580,7 @@ private struct ConditionDraft {
         case screenUnlocked
         case wifiConnected
         case powerConnected
+        case externalDisplayConnected
         case networkReachable
         case timeRange
 
@@ -588,6 +589,7 @@ private struct ConditionDraft {
             case .screenUnlocked: return "屏幕已解锁"
             case .wifiConnected: return "连接 Wi-Fi"
             case .powerConnected: return "插入电源"
+            case .externalDisplayConnected: return "连接外接显示屏"
             case .networkReachable: return "网络可达"
             case .timeRange: return "时间范围"
             }
@@ -602,7 +604,7 @@ private struct ConditionDraft {
 
         var primaryPlaceholder: String? {
             switch self {
-            case .screenUnlocked, .powerConnected: return nil
+            case .screenUnlocked, .powerConnected, .externalDisplayConnected: return nil
             case .wifiConnected: return nil
             case .networkReachable: return "主机名或 IP"
             case .timeRange: return "开始，例如 08:00"
@@ -611,7 +613,7 @@ private struct ConditionDraft {
 
         var secondaryPlaceholder: String? {
             switch self {
-            case .screenUnlocked, .wifiConnected, .powerConnected: return nil
+            case .screenUnlocked, .wifiConnected, .powerConnected, .externalDisplayConnected: return nil
             case .networkReachable: return "端口，例如 443"
             case .timeRange: return "结束，例如 20:00"
             }
@@ -622,6 +624,7 @@ private struct ConditionDraft {
             case .screenUnlocked: return "屏幕未锁定且屏保未运行时满足。"
             case .wifiConnected: return "从当前可见 Wi-Fi 中选择一个 SSID，后续连接到它时满足。"
             case .powerConnected: return "Mac 接入外部电源时满足。"
+            case .externalDisplayConnected: return "检测到任意非内建显示屏在线时满足；当天最早连接作为上班，最后断开前的最后一次满足作为下班。"
             case .networkReachable: return "能建立 TCP 连接时满足，适合公司内网探测。"
             case .timeRange: return "当前时间落在范围内时满足，支持跨午夜。"
             }
@@ -629,7 +632,7 @@ private struct ConditionDraft {
 
         var isSingleton: Bool {
             switch self {
-            case .screenUnlocked, .powerConnected:
+            case .screenUnlocked, .powerConnected, .externalDisplayConnected:
                 return true
             case .wifiConnected, .networkReachable, .timeRange:
                 return false
@@ -654,6 +657,8 @@ private struct ConditionDraft {
             self.primary = ssid
         case .powerConnected:
             self.kind = .powerConnected
+        case .externalDisplayConnected:
+            self.kind = .externalDisplayConnected
         case let .networkReachable(host, port):
             self.kind = .networkReachable
             self.primary = host
@@ -673,6 +678,8 @@ private struct ConditionDraft {
             return primary.isEmpty ? nil : .wifiConnected(ssid: primary)
         case .powerConnected:
             return .powerConnected
+        case .externalDisplayConnected:
+            return .externalDisplayConnected
         case .networkReachable:
             guard !primary.isEmpty, let port = Int(secondary), (1...65_535).contains(port) else {
                 return nil
@@ -695,6 +702,8 @@ private struct ConditionDraft {
             return "Wi-Fi：\(primary.isEmpty ? "未设置" : primary)"
         case .powerConnected:
             return "插入电源"
+        case .externalDisplayConnected:
+            return "连接外接显示屏"
         case .networkReachable:
             return "网络：\(primary.isEmpty ? "未设置" : primary):\(secondary.isEmpty ? "-" : secondary)"
         case .timeRange:

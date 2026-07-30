@@ -602,6 +602,7 @@ private struct DakaConditionDraft {
         case screenUnlocked
         case wifiConnected
         case powerConnected
+        case externalDisplayConnected
         case networkReachable
         case timeRange
 
@@ -612,6 +613,7 @@ private struct DakaConditionDraft {
             case .screenUnlocked: return "屏幕已解锁"
             case .wifiConnected: return "连接 Wi-Fi"
             case .powerConnected: return "插入电源"
+            case .externalDisplayConnected: return "连接外接显示屏"
             case .networkReachable: return "网络可达"
             case .timeRange: return "时间范围"
             }
@@ -625,6 +627,8 @@ private struct DakaConditionDraft {
                 return "连接到指定 SSID 时满足，名称区分大小写和空格。"
             case .powerConnected:
                 return "Mac 接入外部电源时满足。"
+            case .externalDisplayConnected:
+                return "检测到任意非内建显示屏在线时满足；当天最早连接作为上班，最后断开前的最后一次满足作为下班。"
             case .networkReachable:
                 return "能够建立 TCP 连接时满足。"
             case .timeRange:
@@ -634,7 +638,7 @@ private struct DakaConditionDraft {
 
         var isSingleton: Bool {
             switch self {
-            case .screenUnlocked, .powerConnected:
+            case .screenUnlocked, .powerConnected, .externalDisplayConnected:
                 return true
             case .wifiConnected, .networkReachable, .timeRange:
                 return false
@@ -659,6 +663,8 @@ private struct DakaConditionDraft {
             primary = ssid
         case .powerConnected:
             kind = .powerConnected
+        case .externalDisplayConnected:
+            kind = .externalDisplayConnected
         case let .networkReachable(host, port):
             kind = .networkReachable
             primary = host
@@ -679,6 +685,8 @@ private struct DakaConditionDraft {
             return ssid.isEmpty ? nil : .wifiConnected(ssid: ssid)
         case .powerConnected:
             return .powerConnected
+        case .externalDisplayConnected:
+            return .externalDisplayConnected
         case .networkReachable:
             let host = primary.trimmingCharacters(in: .whitespacesAndNewlines)
             guard
@@ -898,7 +906,7 @@ private struct ConditionEditorCard: View {
     @ViewBuilder
     private var editor: some View {
         switch condition.kind {
-        case .screenUnlocked, .powerConnected:
+        case .screenUnlocked, .powerConnected, .externalDisplayConnected:
             EmptyView()
         case .wifiConnected:
             HStack(spacing: 10) {
