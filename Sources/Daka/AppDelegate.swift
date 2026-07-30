@@ -30,6 +30,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var store: DakaStore?
     private var storageError: String?
     private var lastMatched = false
+    private var lastExternalDisplayMatched = false
+    private var externalDisplaySessionActive = false
+    private var externalDisplaySessionClosed = false
     private let evaluationQueue = DispatchQueue(label: "local.daka.menu.condition-evaluation", qos: .userInitiated)
     private var evaluationInProgress = false
     private var evaluationRequestedWhileBusy = false
@@ -184,36 +187,84 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         evaluationQueue.async { [weak self] in
             let evaluator = RuleEvaluator(checker: checker)
             let matched = evaluator.evaluate(rule, at: now)
+            let externalDisplayMatched = Self.externalDisplayMatched(
+                in: rule,
+                checker: checker,
+                at: now
+            )
             DispatchQueue.main.async {
-                self?.finishEvaluation(matched: matched, at: now)
+                self?.finishEvaluation(
+                    matched: matched,
+                    externalDisplayMatched: externalDisplayMatched,
+                    at: now
+                )
             }
         }
     }
 
-    private func finishEvaluation(matched: Bool, at now: Date) {
+    private static func externalDisplayMatched(
+        in rule: TimerRule,
+        checker: ConditionChecking,
+        at date: Date
+    ) -> Bool {
+        guard rule.conditions.contains(where: { condition in
+            if case .externalDisplayConnected = condition {
+                return true
+            }
+            return false
+        }) else {
+            return false
+        }
+
+        return checker.evaluate(.externalDisplayConnected, at: date)
+    }
+
+    private func finishEvaluation(
+        matched: Bool,
+        externalDisplayMatched: Bool,
+        at now: Date
+    ) {
         evaluationInProgress = false
-        let shouldRecord = matched && !statsPaused
-        let wasRecording = lastMatched
+        let dateKey = recorder.dateKey(for: now)
+        if currentRecord?.date != dateKey {
+            lastExternalDisplayMatched = false
+            externalDisplaySessionActive = false
+            externalDisplaySessionClosed = false
+        }
+
+        let decision = ClockInSessionDecider.decide(
+            hasStartedToday: currentRecord?.firstMatchedAt != nil,
+            ruleMatched: matched,
+            statsPaused: statsPaused,
+            usesExternalDisplayCondition: usesExternalDisplayCondition,
+            externalDisplayMatched: externalDisplayMatched,
+            previousExternalDisplayMatched: lastExternalDisplayMatched,
+            externalDisplaySessionActive: externalDisplaySessionActive,
+            externalDisplaySessionClosed: externalDisplaySessionClosed
+        )
 
         currentRecord = recorder.update(record: currentRecord, matched: false, at: now)
 
-        if shouldRecord {
-            if currentRecord?.firstMatchedAt == nil {
-                if usesExternalDisplayCondition {
-                    currentRecord = recorder.update(record: currentRecord, matched: true, at: now)
-                    persistCurrentRecord()
-                } else {
-                    showClockInReminderIfNeeded(at: now)
-                }
-            } else {
-                currentRecord = recorder.update(record: currentRecord, matched: true, at: now)
-                persistCurrentRecord()
+        switch decision {
+        case .none:
+            break
+        case .showManualConfirmation:
+            showClockInReminderIfNeeded(at: now)
+        case .startOrUpdateAutomatically:
+            currentRecord = recorder.update(record: currentRecord, matched: true, at: now)
+            if usesExternalDisplayCondition, externalDisplayMatched {
+                externalDisplaySessionActive = true
+                externalDisplaySessionClosed = false
             }
-        } else if shouldCloseExternalDisplaySession(wasRecording: wasRecording, matched: matched) {
+            persistCurrentRecord()
+        case .closeExternalDisplaySession:
             currentRecord?.lastMatchedAt = now
+            externalDisplaySessionActive = false
+            externalDisplaySessionClosed = true
             persistCurrentRecord()
         }
-        lastMatched = shouldRecord
+        lastMatched = matched && !statsPaused
+        lastExternalDisplayMatched = externalDisplayMatched
 
         showRestDayReminderIfNeeded(at: now)
 
@@ -331,6 +382,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return "已暂停统计"
         }
 
+        if usesExternalDisplayCondition, !lastExternalDisplayMatched {
+            return "未满足外接屏条件"
+        }
+
         return lastMatched ? "满足条件" : "未满足条件"
     }
 
@@ -339,18 +394,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return "暂停后不会更新今日最后时间"
         }
 
+        if usesExternalDisplayCondition, !lastExternalDisplayMatched {
+            return "外接显示屏未连接，已停止刷新"
+        }
+
         if lastMatched {
             return "正在记录今日时长"
         }
 
-        return usesExternalDisplayCondition
-            ? "外接显示屏未连接，已停止刷新"
-            : "等待规则满足后开始记录"
+        return "等待规则满足后开始记录"
     }
 
     private var statusColor: NSColor {
         if statsPaused {
             return .secondaryLabelColor
+        }
+
+        if usesExternalDisplayCondition, !lastExternalDisplayMatched {
+            return .systemRed
         }
 
         return lastMatched ? .systemGreen : .systemRed
@@ -645,14 +706,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
             return false
         }
-    }
-
-    private func shouldCloseExternalDisplaySession(wasRecording: Bool, matched: Bool) -> Bool {
-        wasRecording
-            && !matched
-            && !statsPaused
-            && usesExternalDisplayCondition
-            && currentRecord?.firstMatchedAt != nil
     }
 
     private var canConfirmClockIn: Bool {
