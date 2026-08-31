@@ -6,11 +6,13 @@ import Foundation
 if CommandLine.arguments.contains("--show")
     || CommandLine.arguments.contains("--show-settings")
 {
-    DistributedNotificationCenter.default().post(
-        name: Notification.Name("local.daka.menu.show"),
+    DistributedNotificationCenter.default().postNotificationName(
+        Notification.Name("local.daka.menu.show"),
         object: CommandLine.arguments.contains("--show-settings")
             ? DakaDashboardSection.settings.rawValue
-            : DakaDashboardSection.today.rawValue
+            : DakaDashboardSection.today.rawValue,
+        userInfo: nil,
+        deliverImmediately: true
     )
     exit(0)
 }

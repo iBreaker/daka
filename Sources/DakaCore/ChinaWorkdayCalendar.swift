@@ -201,9 +201,42 @@ public struct MonthlyWorkdaySummary: Equatable, Sendable {
     public var averageSeconds: TimeInterval
     public var targetSeconds: TimeInterval
     public var usesChinaCalendarData: Bool
+    /// 今日实时跨度。仅当该月是当前月、今天是计入统计的工作日时非 nil。
+    /// 上面的 workdayCount / totalSeconds / averageSeconds 一律不含今天。
+    public var todaySeconds: TimeInterval?
 
     public var isPassing: Bool {
         workdayCount > 0 && averageSeconds >= targetSeconds
+    }
+
+    /// 是否能给出「含今日」的实时预估。
+    public var includesToday: Bool {
+        todaySeconds != nil
+    }
+
+    public var projectedWorkdayCount: Int {
+        workdayCount + (todaySeconds == nil ? 0 : 1)
+    }
+
+    public var projectedRecordedWorkdayCount: Int {
+        recordedWorkdayCount + ((todaySeconds ?? 0) > 0 ? 1 : 0)
+    }
+
+    public var projectedTotalSeconds: TimeInterval {
+        totalSeconds + (todaySeconds ?? 0)
+    }
+
+    /// 把今天此刻的跨度也算进去之后的月均。
+    public var projectedAverageSeconds: TimeInterval {
+        let count = projectedWorkdayCount
+        guard count > 0 else {
+            return 0
+        }
+        return projectedTotalSeconds / TimeInterval(count)
+    }
+
+    public var isProjectedPassing: Bool {
+        projectedWorkdayCount > 0 && projectedAverageSeconds >= targetSeconds
     }
 }
 
@@ -238,7 +271,15 @@ public enum MonthlyWorkdaySummarizer {
                 dateKeys
                 .filter { calendar.isWorkday(dateKey: $0, holidayYear: holidayYear) }
                 .filter { recordByDate[$0]?.excludedFromStats != true }
-            guard !workdayKeys.isEmpty else {
+
+            let todayRecord = recordByDate[todayKey]
+            let todayCounts =
+                month == currentMonth
+                && todayRecord?.excludedFromStats != true
+                && calendar.isWorkday(dateKey: todayKey, holidayYear: holidayYear)
+            let todaySeconds: TimeInterval? = todayCounts ? (todayRecord?.spanSeconds ?? 0) : nil
+
+            guard !workdayKeys.isEmpty || todaySeconds != nil else {
                 return nil
             }
 
@@ -246,7 +287,8 @@ public enum MonthlyWorkdaySummarizer {
             let totalSeconds = workdayKeys.reduce(TimeInterval(0)) { partial, dateKey in
                 partial + (recordByDate[dateKey]?.spanSeconds ?? 0)
             }
-            let averageSeconds = totalSeconds / TimeInterval(workdayKeys.count)
+            let averageSeconds =
+                workdayKeys.isEmpty ? 0 : totalSeconds / TimeInterval(workdayKeys.count)
 
             return MonthlyWorkdaySummary(
                 month: month,
@@ -255,7 +297,8 @@ public enum MonthlyWorkdaySummarizer {
                 totalSeconds: totalSeconds,
                 averageSeconds: averageSeconds,
                 targetSeconds: targetSeconds,
-                usesChinaCalendarData: holidayYear != nil
+                usesChinaCalendarData: holidayYear != nil,
+                todaySeconds: todaySeconds
             )
         }
     }

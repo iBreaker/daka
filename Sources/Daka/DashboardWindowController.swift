@@ -741,39 +741,10 @@ private struct TodayDashboardView: View {
     @ViewBuilder
     private var monthCard: some View {
         if let month = viewModel.currentMonthSummary {
-            HStack(spacing: 16) {
-                DakaGlyph(icon: "calendar", tint: DakaTheme.blue)
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("本月平均")
-                        .font(.system(size: 13, weight: .semibold))
-                    Text(
-                        "\(month.recordedWorkdayCount) 天有记录 · \(month.workdayCount) 个统计工作日"
-                    )
-                    .font(.system(size: 11))
-                    .foregroundColor(.secondary)
-                }
-                Spacer()
-                VStack(alignment: .trailing, spacing: 6) {
-                    HStack(spacing: 8) {
-                        Text(DakaFormatters.duration(month.averageSeconds))
-                            .font(.system(size: 20, weight: .bold, design: .rounded))
-                        DakaStatusPill(
-                            text: month.isPassing ? "达标" : "未达标",
-                            tint: month.isPassing ? DakaTheme.green : DakaTheme.orange
-                        )
-                    }
-                    DakaLinearProgress(
-                        value: viewModel.monthlyAverageTargetSeconds > 0
-                            ? month.averageSeconds / viewModel.monthlyAverageTargetSeconds
-                            : 0,
-                        tint: month.isPassing ? DakaTheme.green : DakaTheme.blue
-                    )
-                    .frame(width: 170)
-                }
-            }
-            .padding(16)
-            .background(DakaCardBackground())
-            .overlay(DakaCardBorder(radius: 15))
+            MonthlyAverageCard(
+                summary: month,
+                targetSeconds: viewModel.monthlyAverageTargetSeconds
+            )
         }
     }
 
@@ -1059,6 +1030,77 @@ private struct DailyRecordCard: View {
     }
 }
 
+private struct MonthlyAverageCard: View {
+    let summary: MonthlyWorkdaySummary
+    let targetSeconds: TimeInterval
+
+    /// 今日页优先展示含今日的实时值，只有今天不计入统计时才回落到已结束的月均。
+    private var headlineSeconds: TimeInterval {
+        summary.includesToday ? summary.projectedAverageSeconds : summary.averageSeconds
+    }
+
+    private var headlinePassing: Bool {
+        summary.includesToday ? summary.isProjectedPassing : summary.isPassing
+    }
+
+    private var workdayCount: Int {
+        summary.includesToday ? summary.projectedWorkdayCount : summary.workdayCount
+    }
+
+    private var recordedWorkdayCount: Int {
+        summary.includesToday ? summary.projectedRecordedWorkdayCount : summary.recordedWorkdayCount
+    }
+
+    var body: some View {
+        HStack(spacing: 16) {
+            DakaGlyph(icon: "calendar", tint: DakaTheme.blue)
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 7) {
+                    Text("本月平均")
+                        .font(.system(size: 13, weight: .semibold))
+                    if summary.includesToday {
+                        DakaStatusPill(text: "含今日", tint: DakaTheme.blue)
+                    }
+                }
+                Text("\(recordedWorkdayCount) 天有记录 · \(workdayCount) 个统计工作日")
+                    .font(.system(size: 11))
+                    .foregroundColor(.secondary)
+                if summary.includesToday {
+                    Text(
+                        "已结束 \(DakaFormatters.duration(summary.averageSeconds)) · 今日 \(DakaFormatters.duration(summary.todaySeconds))"
+                    )
+                    .font(.system(size: 11))
+                    .foregroundColor(.secondary)
+                }
+            }
+            Spacer()
+            VStack(alignment: .trailing, spacing: 6) {
+                HStack(spacing: 8) {
+                    Text(DakaFormatters.duration(headlineSeconds))
+                        .font(.system(size: 20, weight: .bold, design: .rounded))
+                    DakaStatusPill(
+                        text: headlinePassing ? "达标" : "未达标",
+                        tint: headlinePassing ? DakaTheme.green : DakaTheme.orange
+                    )
+                }
+                DakaLinearProgress(
+                    value: targetSeconds > 0 ? headlineSeconds / targetSeconds : 0,
+                    tint: headlinePassing ? DakaTheme.green : DakaTheme.blue
+                )
+                .frame(width: 170)
+                if summary.includesToday {
+                    Text("今日还在计时，数值会随实时跨度变化")
+                        .font(.system(size: 10))
+                        .foregroundColor(.secondary)
+                }
+            }
+        }
+        .padding(16)
+        .background(DakaCardBackground())
+        .overlay(DakaCardBorder(radius: 15))
+    }
+}
+
 private struct MonthlySummaryCard: View {
     let summary: MonthlyWorkdaySummary
     let title: String
@@ -1111,6 +1153,34 @@ private struct MonthlySummaryCard: View {
                 .font(.system(size: 10, weight: .semibold, design: .rounded))
                 .foregroundColor(summary.isPassing ? DakaTheme.green : DakaTheme.blue)
                 .frame(width: 38, alignment: .trailing)
+            }
+
+            if summary.includesToday {
+                Divider()
+                HStack(spacing: 10) {
+                    DakaStatusPill(text: "含今日", tint: DakaTheme.blue)
+                    Text(
+                        "今日 \(DakaFormatters.duration(summary.todaySeconds)) · \(summary.projectedWorkdayCount) 个工作日"
+                    )
+                    .font(.system(size: 10))
+                    .foregroundColor(.secondary)
+                    Spacer()
+                    Text("日均 \(DakaFormatters.duration(summary.projectedAverageSeconds))")
+                        .font(.system(size: 12, weight: .semibold, design: .rounded))
+                        .foregroundColor(
+                            summary.isProjectedPassing ? DakaTheme.green : DakaTheme.blue
+                        )
+                    Text(
+                        DakaFormatters.percent(
+                            targetSeconds > 0
+                                ? summary.projectedAverageSeconds / targetSeconds
+                                : 0
+                        )
+                    )
+                    .font(.system(size: 10, weight: .semibold, design: .rounded))
+                    .foregroundColor(.secondary)
+                    .frame(width: 38, alignment: .trailing)
+                }
             }
         }
         .padding(16)

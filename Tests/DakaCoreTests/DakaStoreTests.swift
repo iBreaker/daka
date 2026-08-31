@@ -159,6 +159,132 @@ struct DakaStoreTests {
         #expect(monthly.first?.averageSeconds == TimeInterval(8 * 60 * 60) / 13)
     }
 
+    @Test func monthlyProjectionAddsTodayOnTopOfSettledDays() throws {
+        let first = Date(timeIntervalSince1970: 1_779_250_400)
+        let records = [
+            DailyRecord(
+                date: "2026-05-19",
+                firstMatchedAt: first,
+                lastMatchedAt: first.addingTimeInterval(8 * 60 * 60)
+            ),
+            DailyRecord(
+                date: "2026-05-20",
+                firstMatchedAt: first,
+                lastMatchedAt: first.addingTimeInterval(2 * 60 * 60)
+            ),
+        ]
+        let date = try #require(ISO8601DateFormatter().date(from: "2026-05-20T12:00:00Z"))
+
+        let summary = try #require(
+            MonthlyWorkdaySummarizer.summaries(
+                records: records,
+                targetSeconds: 8 * 60 * 60,
+                holidayYears: [:],
+                today: date
+            ).first
+        )
+
+        // 已结束口径保持不变：不含今天。
+        #expect(summary.workdayCount == 13)
+        #expect(summary.totalSeconds == TimeInterval(8 * 60 * 60))
+
+        // 含今日口径：多一个工作日，多今天这 2 小时。
+        #expect(summary.includesToday)
+        #expect(summary.todaySeconds == TimeInterval(2 * 60 * 60))
+        #expect(summary.projectedWorkdayCount == 14)
+        #expect(summary.projectedRecordedWorkdayCount == 2)
+        #expect(summary.projectedTotalSeconds == TimeInterval(10 * 60 * 60))
+        #expect(summary.projectedAverageSeconds == TimeInterval(10 * 60 * 60) / 14)
+        #expect(summary.isProjectedPassing == false)
+    }
+
+    @Test func monthlyProjectionCountsTodayWithoutRecordAsZero() throws {
+        let first = Date(timeIntervalSince1970: 1_779_250_400)
+        let records = [
+            DailyRecord(
+                date: "2026-05-19",
+                firstMatchedAt: first,
+                lastMatchedAt: first.addingTimeInterval(8 * 60 * 60)
+            )
+        ]
+        let date = try #require(ISO8601DateFormatter().date(from: "2026-05-20T12:00:00Z"))
+
+        let summary = try #require(
+            MonthlyWorkdaySummarizer.summaries(
+                records: records,
+                targetSeconds: 8 * 60 * 60,
+                holidayYears: [:],
+                today: date
+            ).first
+        )
+
+        #expect(summary.includesToday)
+        #expect(summary.todaySeconds == 0)
+        #expect(summary.projectedWorkdayCount == 14)
+        #expect(summary.projectedRecordedWorkdayCount == 1)
+        #expect(summary.projectedTotalSeconds == TimeInterval(8 * 60 * 60))
+    }
+
+    @Test func monthlyProjectionSkipsTodayWhenExcludedFromStats() throws {
+        let first = Date(timeIntervalSince1970: 1_779_250_400)
+        let records = [
+            DailyRecord(
+                date: "2026-05-19",
+                firstMatchedAt: first,
+                lastMatchedAt: first.addingTimeInterval(8 * 60 * 60)
+            ),
+            DailyRecord(
+                date: "2026-05-20",
+                firstMatchedAt: first,
+                lastMatchedAt: first.addingTimeInterval(2 * 60 * 60),
+                excludedFromStats: true
+            ),
+        ]
+        let date = try #require(ISO8601DateFormatter().date(from: "2026-05-20T12:00:00Z"))
+
+        let summary = try #require(
+            MonthlyWorkdaySummarizer.summaries(
+                records: records,
+                targetSeconds: 8 * 60 * 60,
+                holidayYears: [:],
+                today: date
+            ).first
+        )
+
+        #expect(summary.includesToday == false)
+        #expect(summary.todaySeconds == nil)
+        #expect(summary.projectedWorkdayCount == summary.workdayCount)
+        #expect(summary.projectedAverageSeconds == summary.averageSeconds)
+    }
+
+    @Test func monthlySummaryAppearsOnFirstWorkdayOfMonth() throws {
+        let first = Date(timeIntervalSince1970: 1_779_250_400)
+        let records = [
+            DailyRecord(
+                date: "2026-06-01",
+                firstMatchedAt: first,
+                lastMatchedAt: first.addingTimeInterval(3 * 60 * 60)
+            )
+        ]
+        let date = try #require(ISO8601DateFormatter().date(from: "2026-06-01T12:00:00Z"))
+
+        let summary = try #require(
+            MonthlyWorkdaySummarizer.summaries(
+                records: records,
+                targetSeconds: 8 * 60 * 60,
+                holidayYears: [:],
+                today: date
+            ).first { $0.month == "2026-06" }
+        )
+
+        // 当月还没有已结束的工作日，旧口径为空，但含今日口径仍然要能看到。
+        #expect(summary.workdayCount == 0)
+        #expect(summary.averageSeconds == 0)
+        #expect(summary.includesToday)
+        #expect(summary.projectedWorkdayCount == 1)
+        #expect(summary.projectedAverageSeconds == TimeInterval(3 * 60 * 60))
+    }
+
     @Test func migratesLegacyJSONIntoSQLite() throws {
         let directory = try temporaryDirectory()
         let paths = try DakaPaths(baseDirectory: directory)
